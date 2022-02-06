@@ -25,8 +25,9 @@ async function getPipelines(id, token) {
     if (token === undefined) {
         return 'Not authorize, cannot access pipeline status'
     }
-    const reponse = axios.get(`https://gitlab.com/api/v4/projects/${id}/pipelines?per_page=100&access_token=${token}`)
-    const json = await response.data.reduce(j => j);
+
+    const response = await axios.get(`https://gitlab.com/api/v4/projects/${id}/pipelines?per_page=100&access_token=${token}`)
+    const json = await response.data;
     return json;
 }
 
@@ -35,6 +36,13 @@ router.get('', (req, res) => {
     let id = req.query.id;
     let token = req.query.token;
    
+    if(!username || username === ''){
+        return res.send({ error: 'Missing username' });
+    }
+
+    if(!id || id === ''){
+        return res.send({ error: 'Missing project id' });
+    }
 
     axios.get(`https://gitlab.com/api/v4/users/${username}/projects?statistics=true${`${req.query.token !== undefined ? `&access_token=${req.query.token}` : ''}`}&per_page=100`)
     .then(response => {
@@ -69,8 +77,8 @@ router.get('', (req, res) => {
                             storageSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.storage_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
                             snippetsSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.snippets_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
                             jobArtifacts: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.job_artifacts_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            totalPipelines: `${req.query.token === undefined ? p : p.data.length}`,
-                            latestPipelineStatus: `${req.query.token === undefined ? p : p.data.reduce(j => j).status}`,
+                            totalPipelines: `${req.query.token === undefined ? 'No authorize' : p.length}`,
+                            latestPipelineStatus: `${req.query.token === undefined ? p : p.reduce(j => j).status}`,
                             contributors: `${req.query.token === undefined ? u : u.length}`,
                             repositoryUrl: project.http_url_to_repo,
                             version: req.query.licence,
