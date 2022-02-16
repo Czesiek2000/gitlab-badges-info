@@ -67,7 +67,7 @@
         </div>
 
         <input type="submit" value="Submit">
-        <img alt="badge" id="badge">
+        <img src="https://img.shields.io/badge/generate-pass%20data-orange" alt="badge" id="badge">
     </form>
 
     <script>
@@ -103,7 +103,6 @@
             console.log(url);
             let baseShields = `https://img.shields.io/badge/dynamic/json?`;
             let finalUrl = `${baseShields}color=${color.value}&label=${label.value}&style=${style}&query=${query.value}&url=${encodeURIComponent(url)}`;
-            console.log(finalUrl);
             window.open(finalUrl, '_blank').focus();
         })
 
@@ -115,7 +114,6 @@
         function updateShield(e){
             shieldsUrl = `https://img.shields.io/badge/dynamic/json?color=${color.value}&label=${label.value}&style=${style}&query=${query.value}&url=${encodeURIComponent(`https://gitlab-badges-info.herokuapp.com/badge?id=${id.value}&username=${username.value}${token.value.length > 0 ? `&token=${token.value}` : ''}${document.getElementById('licenceField').value.length > 0 ? `&licence=${document.getElementById('licenceField').value}` : ''}${document.getElementById('date').value.length > 0 ? `&format=${document.getElementById('date').value}` : ''}`)}`;
             document.getElementById('badge').src = shieldsUrl;
-            console.log(shieldsUrl);
         }
 
         type.addEventListener('change', (e) => {
