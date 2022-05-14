@@ -1,23 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+
 const formatDate = require('../helpers/formatDate');
 
 async function getUsers(id, token) {
     if (token === undefined) {
-        return `Not authorize, cannot acces project users`   
+        return `Not authorize, cannot access project users`   
     }
     const res = await axios.get(`https://gitlab.com/api/v4/projects/${id}/users?access_token=${token}`)
     const json = await res.data;
     return json;
 }
 
-async function commits(id, token) {
+async function commitCount(id, token) {
     if(token === undefined) {
-        return `Not authorize, cannot acces project commits`
+        return `Not authorize, cannot access project commits`
     }
     const response = await axios.get(`https://gitlab.com/api/v4/projects/${id}/repository/commits?per_page=100&access_token=${token}`)
-    const json = await response.data.reduce(j => j);
+    const json = await response.data;
+    // console.log(json);
     return json;
 }
 
@@ -28,7 +30,10 @@ async function getPipelines(id, token) {
 
     const response = await axios.get(`https://gitlab.com/api/v4/projects/${id}/pipelines?per_page=100&access_token=${token}`)
     const json = await response.data;
-    return json;
+    if(json.length === 0) {
+        return 'No pipeline found'
+    }
+    return json[0];
 }
 
 router.get('', (req, res) => {
@@ -46,26 +51,25 @@ router.get('', (req, res) => {
 
     axios.get(`https://gitlab.com/api/v4/users/${username}/projects?statistics=true${`${req.query.token !== undefined ? `&access_token=${req.query.token}` : ''}`}&per_page=100`)
     .then(response => {
-        let project = response.data.filter(p => p.id == req.query.id);
+        let project = response.data.filter(p => p.id == parseInt(req.query.id));
         
         if (response.data.length === 0) {
             res.send('<h1>User not found</h1>');
         }else {
             if(response.data.find(p => p.id === parseInt(req.query.id)) === undefined) {
-                return res.send('<h1>Project not found</h1>');
+                return res.send('<h1>Project not found, if project exist add access token</h1>');
             }
             project = project.reduce(j => j);
             let date = formatDate(new Date(response.data.find(p => p.id === parseInt(req.query.id)).last_activity_at), parseInt(req.query.format));
 
-            let projects, commit, pipelines;
             getUsers(project.id, req.query.token).then(u => {
-                commits(project.id, req.query.token).then(c => {
+                commitCount(project.id, req.query.token).then(c => {
                     getPipelines(project.id, req.query.token)
                     .then(p => {
                         let data = {
                             id: project.id,
-                            shortId: `${req.query.token === undefined ? c : c.short_id}`,
-                            commitCount: `${req.query.token === undefined ? c : c.commits}`,
+                            shortId: !req.query.token ? c : c[0].short_id,
+                            commits: req.query.token === undefined ? c : c.length,
                             branch: project.default_branch,
                             stars: project.star_count,
                             topics: project.topics.length,
@@ -76,10 +80,10 @@ router.get('', (req, res) => {
                             repositorySize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.repository_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
                             storageSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.storage_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
                             snippetsSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.snippets_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            jobArtifacts: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.job_artifacts_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
+                            jobArtifacts: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (project.statistics.job_artifacts_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
                             totalPipelines: `${req.query.token === undefined ? 'No authorize' : p.length}`,
-                            latestPipelineStatus: `${req.query.token === undefined ? p : p.reduce(j => j).status}`,
-                            contributors: `${req.query.token === undefined ? u : u.length}`,
+                            latestPipelineStatus: `${req.query.token === undefined && p.length > 0 ? p.status : p.status}`,
+                            contributors: `${req.query.token === undefined ? u : parseInt(u.length)}`,
                             repositoryUrl: project.http_url_to_repo,
                             version: req.query.licence,
                         }
@@ -90,9 +94,6 @@ router.get('', (req, res) => {
             
         }
     })
-    // .catch(error => {
-    //     res.send({ error: error.response.status, message: 'User or project not found' });
-    // });
 })
 
 module.exports = router;
