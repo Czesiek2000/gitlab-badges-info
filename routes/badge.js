@@ -1,99 +1,57 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 
-const formatDate = require('../helpers/formatDate');
+const fetchData = require('../helpers/fetch');
 
-async function getUsers(id, token) {
-    if (token === undefined) {
-        return `Not authorize, cannot access project users`   
-    }
-    const res = await axios.get(`https://gitlab.com/api/v4/projects/${id}/users?access_token=${token}`)
-    const json = await res.data;
-    return json;
-}
-
-async function commitCount(id, token) {
-    if(token === undefined) {
-        return `Not authorize, cannot access project commits`
-    }
-    const response = await axios.get(`https://gitlab.com/api/v4/projects/${id}/repository/commits?per_page=100&access_token=${token}`)
-    const json = await response.data;
-    // console.log(json);
-    return json;
-}
-
-async function getPipelines(id, token) {
-    if (token === undefined) {
-        return 'Not authorize, cannot access pipeline status'
-    }
-
-    const response = await axios.get(`https://gitlab.com/api/v4/projects/${id}/pipelines?per_page=100&access_token=${token}`)
-    const json = await response.data;
-    if(json.length === 0) {
-        return 'No pipeline found'
-    }
-    return json[0];
-}
-
-router.get('', (req, res) => {
+router.get('', async (req, res) => {
     let username = req.query.username;
     let id = req.query.id;
     let token = req.query.token;
-   
-    if(!username || username === ''){
+
+    if (!username || username === '') {
         return res.send({ error: 'Missing username' });
     }
 
-    if(!id || id === ''){
+    if (!id || id == '') {
         return res.send({ error: 'Missing project id' });
     }
-
-    axios.get(`https://gitlab.com/api/v4/users/${username}/projects?statistics=true${`${req.query.token !== undefined ? `&access_token=${req.query.token}` : ''}`}&per_page=100`)
-    .then(response => {
-        let project = response.data.filter(p => p.id == parseInt(req.query.id));
-        
-        if (response.data.length === 0) {
-            res.send('<h1>User not found</h1>');
-        }else {
-            if(response.data.find(p => p.id === parseInt(req.query.id)) === undefined) {
-                return res.send('<h1>Project not found, if project exist add access token</h1>');
-            }
-            project = project.reduce(j => j);
-            let date = formatDate(new Date(response.data.find(p => p.id === parseInt(req.query.id)).last_activity_at), parseInt(req.query.format));
-
-            getUsers(project.id, req.query.token).then(u => {
-                commitCount(project.id, req.query.token).then(c => {
-                    getPipelines(project.id, req.query.token)
-                    .then(p => {
-                        let data = {
-                            id: project.id,
-                            shortId: !req.query.token ? c : c[0].short_id,
-                            commits: req.query.token === undefined ? c : c.length,
-                            branch: project.default_branch,
-                            stars: project.star_count,
-                            topics: project.topics.length,
-                            forks: project.forks_count,
-                            wiki: project.wiki_enabled ? 'Enabled' : 'No wiki',
-                            lastCommit: date,
-                            createdAt: formatDate(new Date(response.data.find(p => p.id === parseInt(req.query.id)).created_at), parseInt(req.query.format)),
-                            repositorySize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.repository_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            storageSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.storage_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            snippetsSize: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (response.data.find(p => p.id === parseInt(req.query.id)).statistics.snippets_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            jobArtifacts: `${req.query.token === undefined ? 'No authorize cannot display this value, you need to specify access token in query string' : (project.statistics.job_artifacts_size / 1000000).toFixed(2) } ${req.query.token !== undefined ? 'MB' : ''}`,
-                            totalPipelines: `${req.query.token === undefined ? 'No authorize' : p.length}`,
-                            latestPipelineStatus: `${req.query.token === undefined && p.length > 0 ? p.status : p.status}`,
-                            contributors: `${req.query.token === undefined ? u : parseInt(u.length)}`,
-                            repositoryUrl: project.http_url_to_repo,
-                            version: req.query.licence,
-                        }
-                        res.send(data);
-                    })
-                })
-            })
-            
-        }
-    })
+    
+    let projects = await fetchData(`https://gitlab.com/api/v4/users/${username}/projects?statistics=true${`${token !== undefined ? `&access_token=${token}` : ''}`}&per_page=100`);
+    let languages, users, commits, pipelines;
+    if (token) {
+        languages = await fetchData(`https://gitlab.com/api/v4/projects/${id}/languages?access_token=${token}`);
+        users = await fetchData(`https://gitlab.com/api/v4/projects/${id}/users?access_token=${token}`);
+        commits = await fetchData(`https://gitlab.com/api/v4/projects/${id}/repository/commits?access_token=${token}`);
+        pipelines = await fetchData(`https://gitlab.com/api/v4/projects/${id}/pipelines?access_token=${token}`);
+    }
+    
+    let project = projects.find(p => p.id == id);
+    if (project === undefined) {
+        res.send({ error: 'Project not found, mayby try passing token' });
+        return
+    }
+    
+    const { name, description, statistics, default_branch, forks_count, star_count, wiki_enabled, visibility } = project;
+    
+    res.send({
+        id,
+        commitId: token ? commits[0].id : 'Cannot get commit id without token',
+        commitShortId: token ? commits[0].short_id : 'Cannot get commit short id without token',
+        name,
+        description,
+        commits: token ? statistics.commit_count : `Cannot fetch statistics. Please provide a token.`,
+        forks: forks_count,
+        stars: star_count,
+        branch: default_branch,
+        wiki: token ? (wiki_enabled ? 'enabled' : 'disabled') : 'Cannot fetch wiki status. Please provide a token.',
+        pipelines: token ? pipelines.length : 'Cannot fetch pipelines. Please provide a token.',
+        languages: token ? languages : 'Cannot fetch languages. Please provide a token.',
+        status: token && pipelines.length != 0 ? pipelines[0].status : 'Cannot fetch pipelines. Please provide a token.',
+        pipelineStatus: token && pipelines.length != 0 ? pipelines[0].status : 'Token is not passed or this project has no pipelines.',
+        visibility,
+    });
 })
+
+
 
 module.exports = router;
